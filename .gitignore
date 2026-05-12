@@ -1,0 +1,4 @@
+bin_output/
+cmake-build-debug/
+junk*
+.idea/
