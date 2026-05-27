@@ -1,42 +1,73 @@
 #include "colibri.h" // Assumed to contain your colors: COLIBRI_COLOR_OK, etc.
-
+#include "colibri-io.h" // Assumed to contain your colors: COLIBRI_COLOR_OK, etc.
 static const Host_API_t* host = NULL;
 
-static uint64_t next = 0;
-static int state = 0;
+static uint8_t output = 0;
+static uint8_t buf[2];
 
-static int tick(uint64_t time)
+static void update(void)
 {
-    if (next < time)
-    {
-        next = time + 500;
-        if (state)
-            host->set_rgb_color(0x0404);
-        else
-            host->set_rgb_color(COLIBRI_COLOR_OFF);
-        state = !state;
-    }
-    return state;
+    buf[0] = 0x01; // output register
+    buf[1] = output; // all pins off
+    host->i2c_write(0x41, buf, sizeof(buf));
 }
 
-// 1. Define the internal implementations of your driver's lifecycle
+static int set(int channel, bool value)
+{
+    if (value)
+    {
+        output = output | 1 << channel;
+    }
+    else
+    {
+        output = output & ~(1 << channel);
+    }
+    update();
+}
+
 static void driver_init(void)
 {
 }
 
 static void driver_loaded(void)
 {
-    host->set_rgb_color(COLIBRI_COLOR_OFF);
+    output = 0;
+    update();
+    buf[0] = 0x03; // config register
+    buf[1] = 0x0; // all pins as outputs
+    host->i2c_write(0x41, buf, sizeof(buf));
+    host->subscribe(create_io_event(0, COLIBRI_EVENT_TYPE_OUTPUT, 0));
+    host->subscribe(create_io_event(0, COLIBRI_EVENT_TYPE_OUTPUT, 1));
 }
 
 static void driver_unloading(void)
 {
-    host->set_rgb_color(COLIBRI_COLOR_OFF);
 }
 
-static void driver_event(int32_t id, uint64_t value)
+static void config(int32_t id, uint64_t value)
 {
-    tick(value);
+    // TODO: Maybe modes for "slow" PWM or "pulse" mode
+}
+
+/*
+ * Events supported;
+ *
+ *
+   */
+static void driver_event(int32_t event, uint64_t value)
+{
+    switch (event_type(event))
+    {
+    case COLIBRI_EVENT_TYPE_TIME_PERIOD:
+        update();
+        break;
+    case COLIBRI_EVENT_TYPE_OUTPUT:
+        set(event_param(event), value & 1);
+        break;
+    case COLIBRI_EVENT_TYPE_CONFIG:
+        config(event_param(event), value);
+        break;
+    }
 }
 
 // The entry point. The linker script places this at the exact start of the binary.
@@ -48,9 +79,9 @@ const Driver_Interface_t* module_register(const Host_API_t* host_api)
 
     // Define the VMT mapping our functions
     static const Driver_Interface_t driver_vmt = {
-        .init      = driver_init,
-        .loaded    = driver_loaded,
-        .event     = driver_event,
+        .init = driver_init,
+        .loaded = driver_loaded,
+        .event = driver_event,
         .unloading = driver_unloading
     };
 
