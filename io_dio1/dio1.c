@@ -1,57 +1,33 @@
-#include "colibri-io.h" // Assumed to contain your colors: COLIBRI_COLOR_OK, etc.
+#include "colibri-sdk/colibri-io.h"
+#include "colibri-sdk/colibri.h"
 
 static const Host_API_t* host = NULL;
 
 static uint64_t next = 0;
 static int state = 0;
-
-static int tick(uint64_t time)
-{
-    if (next < time)
-    {
-        next = time + 50;
-        if (state)
-            host->set_rgb_color(0x01);
-        else
-            host->set_rgb_color(COLIBRI_COLOR_OFF);
-        state = !state;
-    }
-    return state;
-}
+static uint16_t slot;
 
 // 1. Define the internal implementations of your driver's lifecycle
-static void driver_init(void)
+static void driver_init(uint16_t slot_number, uint8_t *calibration_data)
 {
+    slot = slot_number;
 }
 
-static void driver_loaded(void)
+static void driver_event(event_t event, int64_t value)
 {
-    host->set_rgb_color(COLIBRI_COLOR_OFF);
-}
-
-static void driver_unloading(void)
-{
-    host->set_rgb_color(COLIBRI_COLOR_OFF);
-}
-
-static void driver_event(int32_t id, uint64_t value)
-{
-    tick(value);
 }
 
 // The entry point. The linker script places this at the exact start of the binary.
 __attribute__((section(".module_entry")))
-const Driver_Interface_t* module_register(const Host_API_t* host_api)
+const Driver_Interface_t* driver_load(const Host_API_t* host_api)
 {
     // Save the API pointer so our functions (like tick) can call the host
     host = host_api;
 
     // Define the VMT mapping our functions
     static const Driver_Interface_t driver_vmt = {
-        .init      = driver_init,
-        .loaded    = driver_loaded,
+        .initialize= driver_init,
         .event     = driver_event,
-        .unloading = driver_unloading
     };
 
     // Return the driver's interface back to the host
